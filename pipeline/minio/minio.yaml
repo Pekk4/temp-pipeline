@@ -1,0 +1,85 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: minio
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: https://charts.min.io/
+    chart: minio
+    targetRevision: 5.4.0
+    helm:
+      values: |
+        mode: standalone
+
+        persistence:
+          size: 10Gi
+
+        resources:
+          requests:
+            memory: 1Gi
+
+        rootUser: minioadmin
+        rootPassword: minioadmin
+
+        service:
+          type: ClusterIP
+
+        consoleService:
+          type: ClusterIP
+
+        ingress:
+          enabled: true
+          ingressClassName: traefik
+          path: /
+          hosts:
+            - minio.local
+          annotations: {}
+          tls: []
+
+        consoleIngress:
+          enabled: true
+          ingressClassName: traefik
+          path: /
+          hosts:
+            - console.minio.local
+          annotations: {}
+          tls: []
+
+        extraDeploy:
+          - apiVersion: batch/v1
+            kind: Job
+            metadata:
+              name: create-mlflow-bucket
+              namespace: minio
+              annotations:
+                argocd.argoproj.io/hook: PostSync
+                argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+            spec:
+              template:
+                spec:
+                  restartPolicy: OnFailure
+                  containers:
+                    - name: mc
+                      image: minio/mc:latest
+                      command:
+                        - /bin/sh
+                        - -c
+                        - |
+                          until mc alias set minio http://minio.minio.svc.cluster.local:9000 minioadmin minioadmin; do
+                            echo "waiting for minio..."
+                            sleep 5
+                          done
+                          mc mb --ignore-existing minio/mlflow
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: minio
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

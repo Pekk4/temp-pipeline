@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: knative-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4000"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/pekk4/mlops-pipeline.git
+    targetRevision: master
+    path: components/knative-config
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: knative-serving
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

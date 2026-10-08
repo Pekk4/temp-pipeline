@@ -1,0 +1,73 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1900"
+spec:
+  project: default
+
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: prometheus
+    targetRevision: 28.13.0
+    helm:
+      releaseName: prometheus
+      valuesObject:
+        server:
+          ingress:
+            enabled: true
+            ingressClassName: traefik
+            hosts:
+              - prometheus.local
+            path: /
+            pathType: Prefix
+
+        serverFiles:
+          alerting_rules.yml:
+            groups:
+              - name: wine-model.rules
+                rules:
+                  - alert: WineModelInferenceFailures
+                    expr: increase(model_infer_request_failure_total{serving_kserve_io_inferenceservice="wine"}[2m]) > 3
+                    for: 10s
+                    labels:
+                      severity: warning
+                      model: wine
+                      trigger: retraining
+                    annotations:
+                      summary: Wine model inference failures detected
+                      description: Demo retraining trigger fired from MLServer inference failure metric.
+
+        alertmanager:
+          enabled: true
+          config:
+            global:
+              resolve_timeout: 5m
+
+            route:
+              receiver: argo-events-training
+              group_by:
+                - alertname
+              group_wait: 5s
+              group_interval: 30s
+              repeat_interval: 1h
+
+            receivers:
+              - name: argo-events-training
+                webhook_configs:
+                  - url: http://training-webhook-eventsource-svc.argo-events.svc.cluster.local:12000/train
+                    send_resolved: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: prometheus
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-network
+  namespace: knative-serving
+  annotations:
+    argocd.argoproj.io/sync-wave: "4000"
+data:
+  ingress.class: istio.ingress.networking.knative.dev
